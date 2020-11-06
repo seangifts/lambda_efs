@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+  PublicSubnetId:
+    Type: AWS::EC2::Subnet::Id
+
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+  
+  InstanceType:
+    Type: String
+    Default: t3.large
+    AllowedValues:
+      - t3.large
+  
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+  
+  EfsFileSystemId:
+    Type: String
+  
+  EfsSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+
+Resources:
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SubnetId: !Ref PublicSubnetId
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+        - !Ref EfsSecurityGroupId
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-instance"
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash -xe
+            yum install -y amazon-efs-utils
+            yum install -y nfs-utils
+            file_system_id_1=${EfsFileSystemId}
+            efs_mount_point_1=/mnt/efs/fs1
+            mkdir -p "${!efs_mount_point_1}"
+            test -f "/sbin/mount.efs" && printf "\n${!file_system_id_1}:/ ${!efs_mount_point_1} efs tls,_netdev\n" >> /etc/fstab || printf "\n${!file_system_id_1}.efs.eu-west-1.amazonaws.com:/ ${!efs_mount_point_1} nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport,_netdev 0 0\n" >> /etc/fstab
+            test -f "/sbin/mount.efs" && printf "\n[client-info]\nsource=liw\n" >> /etc/amazon/efs/efs-utils.conf
+            retryCnt=15; waitTime=30; while true; do mount -a -t efs,nfs4 defaults; if [ $? = 0 ] || [ $retryCnt -lt 1 ]; then echo File system mounted successfully; break; fi; echo File system not available, retrying to mount.; ((retryCnt--)); sleep $waitTime; done;
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: !Sub "${AWS::StackName}-securitygroup"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-securitygroup"
+  
+  SecurityGroupIngressSsh:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SecurityGroup
+      CidrIp: 0.0.0.0/0
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+
+Outputs:
+  InstancePublicDnsName:
+    Description: EC2 instance public DNS name
+    Value: !GetAtt Instance.PublicDnsName

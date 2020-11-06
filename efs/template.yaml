@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+  PublicSubnetId:
+    Type: AWS::EC2::Subnet::Id
+
+  PrivateSubnet1Id:
+    Type: AWS::EC2::Subnet::Id
+
+  PerformanceMode:
+    Type: String
+    Description: EFS performance mode
+    Default: generalPurpose
+ 
+  ThroughputMode:
+    Type: String
+    Description: EFS throughput mode
+    Default: bursting
+
+Resources:
+  EfsFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      PerformanceMode: !Ref PerformanceMode
+      ThroughputMode: !Ref ThroughputMode
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-efs"
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: !Sub "${AWS::StackName}-securitygroup"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-securitygroup"
+  
+  SecurityGroupIngressSameSecurityGroup:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SecurityGroup
+      SourceSecurityGroupId: !Ref SecurityGroup
+      IpProtocol: -1
+
+  EfsMountTargetPublicSubnet:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EfsFileSystem
+      SecurityGroups:
+        - !Ref SecurityGroup
+      SubnetId: !Ref PublicSubnetId
+
+  EfsMountTargetPrivateSubnet1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EfsFileSystem
+      SecurityGroups:
+        - !Ref SecurityGroup
+      SubnetId: !Ref PrivateSubnet1Id
+
+Outputs:
+  FileSystemId:
+    Description: FileSystem ID
+    Value: !Ref EfsFileSystem
+
+  SecurityGroupId:
+    Description: Security Group ID
+    Value: !Ref SecurityGroup

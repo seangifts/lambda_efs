@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+ 
+  PrivateSubnet1Id:
+    Type: AWS::EC2::Subnet::Id
+  
+  EfsFileSystemId:
+    Type: String
+
+  EfsSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+
+Globals:
+  Function:
+    CodeUri: app/
+    Runtime: python3.7
+    Timeout: 900
+    MemorySize: 3008
+    Tracing: Active
+    Environment:
+      Variables:
+        PYTHONPATH: /mnt/inference/ml/lib
+        TORCH_HOME: /mnt/inference/ml/model
+    VpcConfig:
+      SecurityGroupIds:
+        - !Ref EfsSecurityGroupId
+      SubnetIds:
+        - !Ref PrivateSubnet1Id
+    
+Resources:
+  InitFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index_init.lambda_handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambdaReadOnlyAccess
+        - AWSXrayWriteOnlyAccess
+        - VPCAccessPolicy: {}
+      FileSystemConfigs:
+        - Arn: !GetAtt EfsAccessPoint.Arn
+          LocalMountPath: /mnt/inference
+  
+  InitVerboseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index_init_verbose.lambda_handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambdaReadOnlyAccess
+        - AWSXrayWriteOnlyAccess
+        - VPCAccessPolicy: {}
+      FileSystemConfigs:
+        - Arn: !GetAtt EfsAccessPoint.Arn
+          LocalMountPath: /mnt/inference
+  
+  HandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index_handler.lambda_handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambdaReadOnlyAccess
+        - AWSXrayWriteOnlyAccess
+        - VPCAccessPolicy: {}
+      FileSystemConfigs:
+        - Arn: !GetAtt EfsAccessPoint.Arn
+          LocalMountPath: /mnt/inference
+  
+  HandlerVerboseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index_handler_verbose.lambda_handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambdaReadOnlyAccess
+        - AWSXrayWriteOnlyAccess
+        - VPCAccessPolicy: {}
+      FileSystemConfigs:
+        - Arn: !GetAtt EfsAccessPoint.Arn
+          LocalMountPath: /mnt/inference
+  
+  EfsAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref EfsFileSystemId
+      PosixUser:
+        Uid: 1001
+        Gid: 1001
+      RootDirectory:
+        CreationInfo:
+          OwnerUid: 1001
+          OwnerGid: 1001
+          Permissions: "0777"
+      AccessPointTags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-ap"
+
+Outputs:
+  InitFunction:
+    Description: "Lambda Init Function ARN"
+    Value: !GetAtt InitFunction.Arn
+
+  InitVerboseFunction:
+    Description: "Lambda Init Verbose Function ARN"
+    Value: !GetAtt InitVerboseFunction.Arn
+
+  HandlerFunction:
+    Description: "Lambda Handler Function ARN"
+    Value: !GetAtt HandlerFunction.Arn
+
+  HandlerVerboseFunction:
+    Description: "Lambda Handler Verbose Function ARN"
+    Value: !GetAtt HandlerVerboseFunction.Arn
